@@ -1,0 +1,23 @@
+const int buzzerPin = 25;  // GPIO connected to the buzzer
+
+// Define the melody (frequencies in Hz for a simple chiptune)
+int melody[] = {
+  262, 294, 330, 349, 392, 440, 494, 523, 587, 659, 698, 784, 880, 987, 1046
+};
+
+// Define note durations (in milliseconds)
+int noteDurations[] = {
+  250, 250, 250, 250, 250, 250, 250, 250, 250, 250, 250, 250, 250, 250, 250
+};
+
+void setup() {
+}
+
+void loop() {
+  // Loop through each note in the melody
+  for (int i = 0; i < 15; i++) {
+    tone(buzzerPin, melody[i], noteDurations[i]);  // Play the note
+    delay(noteDurations[i] + 50);                  // Wait before the next note
+  }
+  delay(1000); // Pause before repeating the melody
+}
