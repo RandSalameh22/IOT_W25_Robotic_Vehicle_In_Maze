@@ -10,47 +10,40 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
 
-# S = start
-# G = goal
-# W = wall
-# F = free to move
+def mapMazeSymbolsToNumbers(maze):
+    symbol_to_letter = {
+        'W': 'W',  # Wall
+        'F': 'F',  # Free space
+        'S': 'S',  # Start point
+        'G': 'G'   # Goal
+    }
+    return [[symbol_to_letter[cell] for cell in row] for row in maze]
 
-def convertTranslationToRobotFormat(robot_action_list):
-    # maze_solution = "{ "
-    # for turn, turn_cnt in robot_action_list:
-    #     maze_solution += "{ " + f"{turn}, {turn_cnt}" + " },"
-    # maze_solution += " }"
-    maze_solution = []
-    for turn, turn_cnt in robot_action_list:
-        maze_solution.append([turn, turn_cnt])
-    return maze_solution
 
-def printSolution(actions, env: MazeEnv) -> None:
-    env.reset()
-    total_cost = 0
-    print(env.render())
-    print(f"Timestep: {1}")
-    print(f"State: {env.get_state()}")
-    print(f"Action: {None}")
-    # print(f"Cost: {0}")
-    time.sleep(1)
-    for i, action in enumerate(actions):
-        state, cost, terminated = env.step(action)
-        total_cost += cost
-        clear_output(wait=True)
-        print(env.render())
-        print(f"Timestep: {i + 2}")
-        print(f"State: {state}")
-        print(f"Action: {action}")
-        # print(f"Cost: {cost}")
-        print(f"Total cost: {total_cost}")
-        time.sleep(1)
-        if terminated is True:
-            break
+def transmitMaze(maze):
+    """
+    Transmit the maze structure to Google Sheets.
+    Each row of the maze will be written as a row in the Google Sheet.
+    """
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    creds = ServiceAccountCredentials.from_json_keyfile_name("JSONkey.json", scope)
+    client = gspread.authorize(creds)
+    sheet = client.open("Transmit").sheet1  # Open the first sheet
+
+    # Clear the existing data in the sheet
+    sheet.clear()
+
+    # Write the maze structure row by row
+    for row in maze:
+        sheet.append_row(row)
+
 
 def buildMaze(size, print_maze=0):
+    """
+    Build a maze using MazeBuilder and store it in defs.boards['Map'].
+    """
     root_builder = tk.Tk()
-    app = MazeBuilder.MazeBuilder(root_builder, rows_builder=size, cols_builder=size)  # Adjust the size here as needed
+    app = MazeBuilder.MazeBuilder(root_builder, rows_builder=size, cols_builder=size)  # Adjust size as needed
     root_builder.mainloop()
     if print_maze:
         env = MazeEnv(defs.boards['Map'])
@@ -58,32 +51,12 @@ def buildMaze(size, print_maze=0):
         print(env.render())
         clear_output(wait=True)
 
-def solveMaze( print_solution=0):
-    board = defs.boards['Map']
-    env = MazeEnv(board)
-    # try:
-    WAstar_agent = WeightedAStarAgent()
-    agent_action_list, total_cost, expanded = WAstar_agent.search(env, h_weight=0.5)
+    # Return the built maze
+    return defs.boards['Map']
 
-    robot_action_list = TranslateToRobotActions.TTRA(agent_action_list, board).translateSolution()
-    maze_solution = convertTranslationToRobotFormat(robot_action_list)
-    if print_solution:
-        print(maze_solution)
-        # printSolution(agent_action_list, env)
-    return agent_action_list, robot_action_list, maze_solution
 
-def transmitSolution(maze_solution):
-    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    creds = ServiceAccountCredentials.from_json_keyfile_name("JSONkey.json", scope)
-    client = gspread.authorize(creds)
-    sheet = client.open("Transmit" ).sheet1  # Open the first sheet
-    # Clear the existing data in the sheet
-    sheet.clear()
-    # Insert the data into the sheet starting from the first row
-    for row in maze_solution:
-        sheet.append_row(row)
-
-buildMaze(10,print_maze=1)
-agent_actions, robot_actions, solution = solveMaze(print_solution=1)
-transmitSolution(solution)
-# print(solution)
+# Main execution
+if __name__ == "__main__":
+    raw_maze = buildMaze(10, print_maze=1)  # Create and retrieve the raw maze
+    numerical_maze = mapMazeSymbolsToNumbers(raw_maze)  # Map symbols to numerical values
+    transmitMaze(numerical_maze)  # Transmit the numerical maze to Google Sheets
