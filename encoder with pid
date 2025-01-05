@@ -1,67 +1,61 @@
 /*****************************************************
-  Driving Straight via PID Speed Control
- 
+  Improved Robot Movement with PID Speed Control
  *****************************************************/
 
 // -------------------------------
 // Pin Definitions
 // -------------------------------
-#define MotFwdA  12 // Motor A Forward pin - left motor
-#define MotRevA  14 // Motor A Reverse pin - left motor
-#define MotFwdB  25 // Motor B Forward pin - right motor
-#define MotRevB  33 // Motor B Reverse pin - right motor
-#define STBY     27 // Standby pin
-#define PWMA     13 // PWM control for Motor A speed
-#define PWMB     26 // PWM control for Motor B speed
+#define MotFwdA  12  // Motor A Forward pin - left motor
+#define MotRevA  14  // Motor A Reverse pin - left motor
+#define MotFwdB  25  // Motor B Forward pin - right motor
+#define MotRevB  33  // Motor B Reverse pin - right motor
+#define STBY     27  // Standby pin
+#define PWMA     13  // PWM control for Motor A speed
+#define PWMB     26  // PWM control for Motor B speed
 
 // Encoder pins for Motor A
-int encoderPinA1 = 35; // Encoder Output 'A' for motor A
-int encoderPinA2 = 34; // Encoder Output 'B' for motor A
+int encoderPinA1 = 35;
+int encoderPinA2 = 34;
 volatile int lastEncodedA = 0;
-volatile long encoderValueA = 0;  // Cumulative ticks for Motor A
+volatile long encoderValueA = 0;
 
 // Encoder pins for Motor B
-int encoderPinB1 = 15; // Encoder Output 'A' for motor B
-int encoderPinB2 = 4;  // Encoder Output 'B' for motor B
+int encoderPinB1 = 15;
+int encoderPinB2 = 4;
 volatile int lastEncodedB = 0;
-volatile long encoderValueB = 0;  // Cumulative ticks for Motor B
+volatile long encoderValueB = 0;
 
 // -------------------------------
 // PID Parameters
-//   We'll run a small PID for each motor
 // -------------------------------
-float KpA = 0.7;  // Proportional for Motor A
-float KiA = 0.0;  // Integral for Motor A
-float KdA = 0.1;  // Derivative for Motor A
+float KpA = 1.2;  // Tuned Proportional for Motor A
+float KiA = 0.01; // Tuned Integral for Motor A
+float KdA = 0.2;  // Tuned Derivative for Motor A
 
-float KpB = 0.9;  // Proportional for Motor B
-float KiB = 0.0;  
-float KdB = 0.1;  
+float KpB = 1.2;  // Tuned Proportional for Motor B
+float KiB = 0.01; 
+float KdB = 0.2;
 
-// You can start with only Kp > 0, Ki=0, Kd=0. 
-// Then tune slowly by increasing P and possibly adding small I or D.
-
-// Tracking the PID “state” for each motor
-float errorSumA    = 0.0;  
-float lastErrorA   = 0.0;
-float errorSumB    = 0.0;
-float lastErrorB   = 0.0;
+// State tracking for PID
+float errorSumA = 0.0;
+float lastErrorA = 0.0;
+float errorSumB = 0.0;
+float lastErrorB = 0.0;
 
 // Speed tracking
-long lastCountA    = 0;   // Last encoder value (to measure delta)
-long lastCountB    = 0;   
-int  motorSpeedA   = 0;   // Ticks per sample for A
-int  motorSpeedB   = 0;   // Ticks per sample for B
+int motorSpeedA = 0;
+int motorSpeedB = 0;
 
 // Motor PWM commands
-int pwmA = 0;  // PWM output for Motor A
-int pwmB = 0;  // PWM output for Motor B
+int pwmA = 0;
+int pwmB = 0;
 
 // -------------------------------
 // Control Constants
 // -------------------------------
-int   targetSpeed    = 20;    // [ticks per sample] desired speed
-unsigned long pidInterval = 50; // ms between speed checks
+int targetSpeed = 20;           // [ticks per sample]
+float balanceFactor = 1.0;      // Adjust balance between motors
+unsigned long pidInterval = 50; // ms between PID checks
 unsigned long lastPIDTime = 0;
 
 // -------------------------------
@@ -86,17 +80,15 @@ void setup() {
   pinMode(encoderPinB1, INPUT_PULLUP);
   pinMode(encoderPinB2, INPUT_PULLUP);
 
-  // Attach interrupts for encoders
   attachInterrupt(digitalPinToInterrupt(encoderPinA1), updateEncoderA, CHANGE);
   attachInterrupt(digitalPinToInterrupt(encoderPinA2), updateEncoderA, CHANGE);
   attachInterrupt(digitalPinToInterrupt(encoderPinB1), updateEncoderB, CHANGE);
   attachInterrupt(digitalPinToInterrupt(encoderPinB2), updateEncoderB, CHANGE);
 
-  // Initialize PWM outputs
   pwmA = 0;
   pwmB = 0;
-  setMotorAForward(pwmA);
-  setMotorBForward(pwmB);
+  setMotorForward(MotFwdA, MotRevA, PWMA, pwmA);
+  setMotorForward(MotFwdB, MotRevB, PWMB, pwmB);
 }
 
 // -------------------------------
@@ -105,139 +97,144 @@ void setup() {
 void loop() {
   unsigned long now = millis();
 
-  // Check if it's time to sample the encoders & run the PID
   if (now - lastPIDTime >= pidInterval) {
     lastPIDTime = now;
 
-    // 1) Calculate how many ticks each motor saw in last pidInterval
-    long currentCountA = encoderValueA;
-    long currentCountB = encoderValueB;
+    // Calculate speed from encoders
+    int deltaA = encoderValueA;
+    int deltaB = encoderValueB;
 
-    int deltaA = currentCountA - lastCountA; 
-    int deltaB = currentCountB - lastCountB;
+    encoderValueA = 0;
+    encoderValueB = 0;
 
-    // Store for next round
-    lastCountA = currentCountA;
-    lastCountB = currentCountB;
-
-    // 2) Actual speed in "ticks per sample" 
-    //    (since pidInterval is 50 ms, "speed" is basically ticks / 50ms)
     motorSpeedA = deltaA;
     motorSpeedB = deltaB;
 
-    // 3) Compute the error for each motor
-    //    error = (target speed) - (actual speed)
-    float errorA = (float)targetSpeed - motorSpeedA;
-    float errorB = (float)targetSpeed - motorSpeedB;
+    // Calculate errors
+    float errorA = targetSpeed - motorSpeedA;
+    float errorB = targetSpeed - motorSpeedB;
 
-    // 4) PID calculations for each motor
-
-    // --- Motor A ---
-    errorSumA += errorA;                         // integral
-    float dErrorA = errorA - lastErrorA;         // derivative
-    lastErrorA   = errorA;                       // save for next time
+    // PID for Motor A
+    errorSumA += errorA;
+    errorSumA = constrain(errorSumA, -1000, 1000); // Prevent wind-up
+    float dErrorA = errorA - lastErrorA;
+    lastErrorA = errorA;
 
     float adjustA = (KpA * errorA) + (KiA * errorSumA) + (KdA * dErrorA);
+    pwmA += (int)adjustA;
+    pwmA = constrain(pwmA, 0, 255);
 
-    // Update pwmA
-    pwmA += (int)adjustA; // "incremental" approach
-    if (pwmA < 0)   pwmA = 0;   
-    if (pwmA > 255) pwmA = 255;
-
-    // --- Motor B ---
+    // PID for Motor B
     errorSumB += errorB;
+    errorSumB = constrain(errorSumB, -1000, 1000); // Prevent wind-up
     float dErrorB = errorB - lastErrorB;
-    lastErrorB   = errorB;
+    lastErrorB = errorB;
 
     float adjustB = (KpB * errorB) + (KiB * errorSumB) + (KdB * dErrorB);
+    pwmB += (int)adjustB * balanceFactor;
+    pwmB = constrain(pwmB, 0, 255);
 
-    pwmB += (int)adjustB; 
-    if (pwmB < 0)   pwmB = 0;  
-    if (pwmB > 255) pwmB = 255;
+    // Set motors
+    setMotorForward(MotFwdA, MotRevA, PWMA, pwmA);
+    setMotorForward(MotFwdB, MotRevB, PWMB, pwmB);
 
-    // 5) Set motors with updated PWM
-    setMotorAForward(pwmA);
-    setMotorBForward(pwmB);
-
-    // 6) Debug info
-    Serial.print("A_spd=");
+    // Debugging
+    Serial.print("A_speed: ");
     Serial.print(motorSpeedA);
-    Serial.print(", B_spd=");
+    Serial.print(", B_speed: ");
     Serial.print(motorSpeedB);
-    Serial.print(" | errA=");
-    Serial.print(errorA);
-    Serial.print(", errB=");
-    Serial.print(errorB);
-    Serial.print(" | pwmA=");
+    Serial.print(" | pwmA: ");
     Serial.print(pwmA);
-    Serial.print(", pwmB=");
+    Serial.print(", pwmB: ");
     Serial.println(pwmB);
   }
-
-  // Short delay so loop doesn't spin too fast
+solveMaze();
   delay(5);
 }
 
-// -------------------------------
-// PID? We do it inline above. 
-// If you prefer a function, you can adapt from your original code.
-// -------------------------------
+void solveMaze() {
+  int leftSensor = analogRead(LEFT_SENSOR_PIN);
+  int frontSensor = analogRead(FRONT_SENSOR_PIN);
+  int rightSensor = analogRead(RIGHT_SENSOR_PIN);
+
+  if (frontSensor > WALL_THRESHOLD) { 
+    // If there's a wall ahead
+    if (rightSensor <= WALL_THRESHOLD) { 
+      // If no wall to the right, turn right
+      turnRight();
+    } else if (leftSensor <= WALL_THRESHOLD) { 
+      // If no wall to the left, turn left
+      turnLeft();
+    } else { 
+      // Otherwise, turn around (dead end)
+      turnAround();
+    }
+  } else { 
+    // If no wall ahead, move forward
+    moveForward();
+  }
+}
+
+void moveForward() {
+  setMotorForward(MotFwdA, MotRevA, PWMA, pwmA); // Use current PWM settings
+  setMotorForward(MotFwdB, MotRevB, PWMB, pwmB);
+  delay(500); // Move forward for a short duration
+}
+
+void turnLeft() {
+  setMotorForward(MotFwdA, MotRevA, PWMA, 100); // Slow motor A for turning
+  setMotorForward(MotFwdB, MotRevB, PWMB, 200); // Faster motor B for turning
+  delay(300); // Adjust delay for 90-degree turn
+}
+
+void turnRight() {
+  setMotorForward(MotFwdA, MotRevA, PWMA, 200); // Faster motor A for turning
+  setMotorForward(MotFwdB, MotRevB, PWMB, 100); // Slow motor B for turning
+  delay(300); // Adjust delay for 90-degree turn
+}
+
+void turnAround() {
+  setMotorForward(MotFwdA, MotRevA, PWMA, 200);
+  setMotorForward(MotFwdB, MotRevB, PWMB, 200);
+  delay(600); // Longer delay for 180-degree turn
+}
 
 // -------------------------------
-// Helper: Set Motor A Forward
+// Motor Control Helpers
 // -------------------------------
-void setMotorAForward(int pwmVal) {
+void setMotorForward(int fwdPin, int revPin, int pwmPin, int pwmVal) {
   if (pwmVal < 0) {
-    digitalWrite(MotFwdA, LOW);
-    digitalWrite(MotRevA, HIGH);
-    analogWrite(PWMA, -pwmVal);
+    digitalWrite(fwdPin, LOW);
+    digitalWrite(revPin, HIGH);
+    analogWrite(pwmPin, -pwmVal);
   } else {
-    digitalWrite(MotFwdA, HIGH);
-    digitalWrite(MotRevA, LOW);
-    analogWrite(PWMA, pwmVal);
+    digitalWrite(fwdPin, HIGH);
+    digitalWrite(revPin, LOW);
+    analogWrite(pwmPin, pwmVal);
   }
 }
 
 // -------------------------------
-// Helper: Set Motor B Forward
-// -------------------------------
-void setMotorBForward(int pwmVal) {
-  if (pwmVal < 0) {
-    digitalWrite(MotFwdB, LOW);
-    digitalWrite(MotRevB, HIGH);
-    analogWrite(PWMB, -pwmVal);
-  } else {
-    digitalWrite(MotFwdB, HIGH);
-    digitalWrite(MotRevB, LOW);
-    analogWrite(PWMB, pwmVal);
-  }
-}
-
-// -------------------------------
-// Encoder Interrupts (unchanged)
+// Encoder Update Functions
 // -------------------------------
 void updateEncoderA() {
   int MSB = digitalRead(encoderPinA1);
   int LSB = digitalRead(encoderPinA2);
-
   int encoded = (MSB << 1) | LSB;
   int sum = (lastEncodedA << 2) | encoded;
 
   if (sum == 0b1101 || sum == 0b0100 || sum == 0b0010 || sum == 0b1011) encoderValueA--;
   if (sum == 0b1110 || sum == 0b0111 || sum == 0b0001 || sum == 0b1000) encoderValueA++;
-
   lastEncodedA = encoded;
 }
 
 void updateEncoderB() {
   int MSB = digitalRead(encoderPinB1);
   int LSB = digitalRead(encoderPinB2);
-
   int encoded = (MSB << 1) | LSB;
   int sum = (lastEncodedB << 2) | encoded;
 
   if (sum == 0b1101 || sum == 0b0100 || sum == 0b0010 || sum == 0b1011) encoderValueB--;
   if (sum == 0b1110 || sum == 0b0111 || sum == 0b0001 || sum == 0b1000) encoderValueB++;
-
   lastEncodedB = encoded;
 }
