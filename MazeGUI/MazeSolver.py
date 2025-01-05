@@ -10,7 +10,7 @@ import gspread
 from oauth2client.service_account import ServiceAccountCredentials
 
 
-def mapMazeSymbolsToNumbers(maze):
+def mapMzeSymbolsToLetters(maze):
     symbol_to_letter = {
         'W': 'W',  # Wall
         'F': 'F',  # Free space
@@ -43,7 +43,7 @@ def buildMaze(size, print_maze=0):
     Build a maze using MazeBuilder and store it in defs.boards['Map'].
     """
     root_builder = tk.Tk()
-    app = MazeBuilder.MazeBuilder(root_builder, rows_builder=size, cols_builder=size)  # Adjust size as needed
+    MazeBuilder.MazeBuilder(root_builder, rows_builder=size, cols_builder=size)  # Adjust size as needed
     root_builder.mainloop()
     if print_maze:
         env = MazeEnv(defs.boards['Map'])
@@ -58,5 +58,5 @@ def buildMaze(size, print_maze=0):
 # Main execution
 if __name__ == "__main__":
     raw_maze = buildMaze(10, print_maze=1)  # Create and retrieve the raw maze
-    numerical_maze = mapMazeSymbolsToNumbers(raw_maze)  # Map symbols to numerical values
-    transmitMaze(numerical_maze)  # Transmit the numerical maze to Google Sheets
+    leteteral_maze = mapMzeSymbolsToLetters(raw_maze)  # Map symbols to numerical values
+    transmitMaze(leteteral_maze)  # Transmit the numerical maze to Google Sheets
