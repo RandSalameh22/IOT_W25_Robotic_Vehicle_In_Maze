@@ -148,55 +148,7 @@ void loop() {
     Serial.print(", pwmB: ");
     Serial.println(pwmB);
   }
-solveMaze();
   delay(5);
-}
-
-void solveMaze() {
-  int leftSensor = analogRead(LEFT_SENSOR_PIN);
-  int frontSensor = analogRead(FRONT_SENSOR_PIN);
-  int rightSensor = analogRead(RIGHT_SENSOR_PIN);
-
-  if (frontSensor > WALL_THRESHOLD) { 
-    // If there's a wall ahead
-    if (rightSensor <= WALL_THRESHOLD) { 
-      // If no wall to the right, turn right
-      turnRight();
-    } else if (leftSensor <= WALL_THRESHOLD) { 
-      // If no wall to the left, turn left
-      turnLeft();
-    } else { 
-      // Otherwise, turn around (dead end)
-      turnAround();
-    }
-  } else { 
-    // If no wall ahead, move forward
-    moveForward();
-  }
-}
-
-void moveForward() {
-  setMotorForward(MotFwdA, MotRevA, PWMA, pwmA); // Use current PWM settings
-  setMotorForward(MotFwdB, MotRevB, PWMB, pwmB);
-  delay(500); // Move forward for a short duration
-}
-
-void turnLeft() {
-  setMotorForward(MotFwdA, MotRevA, PWMA, 100); // Slow motor A for turning
-  setMotorForward(MotFwdB, MotRevB, PWMB, 200); // Faster motor B for turning
-  delay(300); // Adjust delay for 90-degree turn
-}
-
-void turnRight() {
-  setMotorForward(MotFwdA, MotRevA, PWMA, 200); // Faster motor A for turning
-  setMotorForward(MotFwdB, MotRevB, PWMB, 100); // Slow motor B for turning
-  delay(300); // Adjust delay for 90-degree turn
-}
-
-void turnAround() {
-  setMotorForward(MotFwdA, MotRevA, PWMA, 200);
-  setMotorForward(MotFwdB, MotRevB, PWMB, 200);
-  delay(600); // Longer delay for 180-degree turn
 }
 
 // -------------------------------
