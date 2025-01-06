@@ -5,82 +5,93 @@
 #include <HTTPClient.h>
 #include <ArduinoJson.h>
 
-
 // Replace with your Google Apps Script web app URL
-const char* scriptUrl = "https://script.google.com/macros/s/AKfycbwd34TDhpt5AGHXRG5R1E_HHrW5pwkp3OkGSgzL4QSRIfCyVT2BY3pf9qvPh6CGi1iPtw/exec?read";
+const char* scriptUrl = "https://script.google.com/macros/s/AKfycbwPG7saY-uFMCJCVG5xh1ruyzOdJOxz4VizYz-x2jLY5aiznPy9YLUdElHNham4P9pV/exec";
+
+const int ROWS = 6; // Number of rows in your maze
+const int COLS = 6; // Number of columns in your maze
+String maze[ROWS][COLS]; // Maze array to hold the data
 
 void commSetup() {
+  pinMode(LEFT_LED_PIN, OUTPUT);
+  pinMode(RIGHT_LED_PIN, OUTPUT);
   digitalWrite(LEFT_LED_PIN, HIGH);
   digitalWrite(RIGHT_LED_PIN, HIGH);
+
   WiFi.begin(ssid, password);
 
   while (WiFi.status() != WL_CONNECTED) {
     delay(1000);
     Serial.println("Connecting to WiFi...");
   }
+
   Serial.println("Connected to WiFi");
   digitalWrite(LEFT_LED_PIN, LOW);
   digitalWrite(RIGHT_LED_PIN, LOW);
-
 }
 
 void commReadData() {
-    if ((WiFi.status() == WL_CONNECTED)) { // Check the current connection status
+  if (WiFi.status() == WL_CONNECTED) {
     HTTPClient http;
     http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
-    http.begin(scriptUrl);  // Specify the URL
-    int httpCode = http.GET();  // Make the request
+    http.begin(scriptUrl);
 
-    if (httpCode == 200) { // Check for the returning code
+    int httpCode = http.GET();
+
+    if (httpCode == 200) {
       String payload = http.getString();
-      Serial.print("HTTP Code: ");
-      Serial.println(httpCode);
-      Serial.print("Data from Google Sheets: ");
+      Serial.println("HTTP Code: 200");
+      Serial.print("Payload: ");
       Serial.println(payload);
-  
-      // Parse JSON
-      DynamicJsonDocument doc(1024);
+
+      // Deserialize the JSON payload
+      DynamicJsonDocument doc(2048);
       DeserializationError error = deserializeJson(doc, payload);
+
       if (!error) {
-        // Example: Assuming the JSON is an array of arrays
-        for (size_t i = 0; i < doc.size(); i++) {
-          JsonArray row = doc[i];
-          for (size_t j = 0; j < row.size(); j++) {
-            Serial.print(row[j].as<String>());
-            Serial.print(" "); 
+        if (doc.is<JsonArray>()) {
+          for (size_t i = 0; i < doc.size() && i < ROWS; i++) {
+            JsonArray row = doc[i].as<JsonArray>();
+            if (row) {
+              for (size_t j = 0; j < row.size() && j < COLS; j++) {
+                if (row[j].is<const char*>()) {
+                  maze[i][j] = row[j].as<String>();
+                  Serial.print(maze[i][j]);
+                  Serial.print(" ");
+                } else {
+                  maze[i][j] = "";
+                  Serial.print("Invalid cell at [");
+                  Serial.print(i);
+                  Serial.print("][");
+                  Serial.print(j);
+                  Serial.println("]");
+                }
+              }
+              Serial.println();
+            } else {
+              Serial.print("Invalid row at index ");
+              Serial.println(i);
+            }
           }
-          if(row[0] == "right"){turns.emplace_back(right, row[1]);}
-          if(row[0] == "left"){turns.emplace_back(left, row[1]);}
-          Serial.println();
-          digitalWrite(LEFT_LED_PIN,HIGH);
-          digitalWrite(RIGHT_LED_PIN,HIGH);
-          delay(500);
-          digitalWrite(LEFT_LED_PIN,LOW);
-          digitalWrite(RIGHT_LED_PIN,LOW);
-          delay(500);
+          Serial.println("Maze matrix filled successfully.");
+        } else {
+          Serial.println("Invalid JSON format: Root is not an array.");
         }
       } else {
         Serial.print("deserializeJson() failed: ");
         Serial.println(error.c_str());
       }
-
     } else {
-      Serial.print("Error on HTTP request, HTTP code: ");
+      Serial.print("HTTP request failed, code: ");
       Serial.println(httpCode);
-      while(1){
-        digitalWrite(LEFT_LED_PIN,HIGH);
-        digitalWrite(RIGHT_LED_PIN,LOW);
-        delay(200);
-        digitalWrite(LEFT_LED_PIN,LOW);
-        digitalWrite(RIGHT_LED_PIN,HIGH);
-        delay(200);
-        }
     }
 
-    http.end();  // Free the resources
+    http.end();
+  } else {
+    Serial.println("WiFi not connected.");
   }
 
-  delay(2000);  
+  delay(2000); // Add a delay between requests
 }
 
 #endif // COMM_H
