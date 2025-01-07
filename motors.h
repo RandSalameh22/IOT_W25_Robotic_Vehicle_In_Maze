@@ -1,6 +1,5 @@
 #include "esp32-hal-gpio.h"
-#ifndef MOTORS_H
-#define MOTORS_H
+
 
 #include <Wire.h>
 #include <Adafruit_VL53L0X.h>
@@ -8,328 +7,264 @@
 #include <vector>
 #include <utility>  // For std::pair
 #include "defs.h"
+#define MotFwdA  12  // Motor A Forward pin - left motor
+#define MotRevA  14  // Motor A Reverse pin - left motor
+#define MotFwdB  25  // Motor B Forward pin - right motor
+#define MotRevB  33  // Motor B Reverse pin - right motor
+#define STBY     27  // Standby pin
+#define PWMA     13  // PWM control for Motor A speed
+#define PWMB     26  // PWM control for Motor B speed
+
+// Encoder pins for Motor A
+int encoderPinA1 = 35;
+int encoderPinA2 = 34;
+volatile int lastEncodedA = 0;
+volatile long encoderValueA = 0;
+
+// Encoder pins for Motor B
+int encoderPinB1 = 15;
+int encoderPinB2 = 4;
+volatile int lastEncodedB = 0;
+volatile long encoderValueB = 0;
+
+// -------------------------------
+// PID Parameters
+// -------------------------------
+// PID Parameters
+float KpA = 1.1;  // Motor A Proportional
+float KiA = 0.01; 
+float KdA = 0.2;
+
+// ערכים חדשים עבור מנוע B (ימני) כדי לשפר את הביצועים
+float KpB = 1.3;  // תגדיל את Kp למנוע B כדי להגביר את התגובה
+float KiB = 0.015; // התאם את Ki למנוע B
+float KdB = 0.25;  // תוכל לנסות להגדיל את Kd כדי לשפר את היציבות
+
+
+float balanceFactor = 1.0;  // תוודא שהמאזן מתאים, תוכל לנסות גם 1.0
+
+// Adjust PID for better balance and less drift
+
+
+
+
+// State tracking for PID
+float errorSumA = 0.0;
+float lastErrorA = 0.0;
+float errorSumB = 0.0;
+float lastErrorB = 0.0;
+
+// Speed tracking
+int motorSpeedA = 0;
+int motorSpeedB = 0;
+
+// Motor PWM commands
+int pwmA = 0;
+int pwmB = 0;
+int targetSpeed =100;           // [ticks per sample]
+unsigned long pidInterval = 20; // ms between PID checks
+unsigned long lastPIDTime = 0;
 
 void move_forward();
 void stop_moving();
 void rotate_right(int duration);
-void moveRight(int duration);
-void move_left(int duration);
+
 void turnRight();
 void move_backward(int duration);
+void move_pid();
 
-void move_forward() {
-  // Move Motor A forward at defined speed
-  digitalWrite(AIN1, HIGH);
-  digitalWrite(AIN2, LOW);
-  analogWrite(PWMA, left_speed_adjustment);
-
-  // Move Motor B forward at defined speed
-  digitalWrite(BIN1, HIGH);
-  digitalWrite(BIN2, LOW);
-  analogWrite(PWMB, right_speed_adjustment);
+void setMotorForward(int fwdPin, int revPin, int pwmPin, int pwmVal) {
+  if (pwmVal < 0) {
+    digitalWrite(fwdPin, LOW);
+    digitalWrite(revPin, HIGH);
+    analogWrite(pwmPin, -pwmVal);
+  } else {
+    digitalWrite(fwdPin, HIGH);
+    digitalWrite(revPin, LOW);
+    analogWrite(pwmPin, pwmVal);
+  }
 }
 
+// -------------------------------
+// Encoder Update Functions
+// -------------------------------
+void updateEncoderA() {
+  int MSB = digitalRead(encoderPinA1);
+  int LSB = digitalRead(encoderPinA2);
+  int encoded = (MSB << 1) | LSB;
+  int sum = (lastEncodedA << 2) | encoded;
+
+  if (sum == 0b1101 || sum == 0b0100 || sum == 0b0010 || sum == 0b1011) encoderValueA--;
+  if (sum == 0b1110 || sum == 0b0111 || sum == 0b0001 || sum == 0b1000) encoderValueA++;
+  lastEncodedA = encoded;
+}
+
+void updateEncoderB() {
+  int MSB = digitalRead(encoderPinB1);
+  int LSB = digitalRead(encoderPinB2);
+  int encoded = (MSB << 1) | LSB;
+  int sum = (lastEncodedB << 2) | encoded;
+
+  if (sum == 0b1101 || sum == 0b0100 || sum == 0b0010 || sum == 0b1011) encoderValueB--;
+  if (sum == 0b1110 || sum == 0b0111 || sum == 0b0001 || sum == 0b1000) encoderValueB++;
+  lastEncodedB = encoded;
+}
+
+void move_pid() {
+  pinMode(STBY, OUTPUT);
+  digitalWrite(STBY, HIGH);
+
+  pinMode(PWMA, OUTPUT);
+  pinMode(PWMB, OUTPUT);
+
+  pinMode(MotFwdA, OUTPUT);
+  pinMode(MotRevA, OUTPUT);
+  pinMode(MotFwdB, OUTPUT);
+  pinMode(MotRevB, OUTPUT);
+
+  Serial.begin(115200);
+
+  pinMode(encoderPinA1, INPUT_PULLUP);
+  pinMode(encoderPinA2, INPUT_PULLUP);
+  pinMode(encoderPinB1, INPUT_PULLUP);
+  pinMode(encoderPinB2, INPUT_PULLUP);
+
+  attachInterrupt(digitalPinToInterrupt(encoderPinA1), updateEncoderA, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(encoderPinA2), updateEncoderA, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(encoderPinB1), updateEncoderB, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(encoderPinB2), updateEncoderB, CHANGE);
+
+  pwmA = 0;
+  pwmB = 0;
+  setMotorForward(MotFwdA, MotRevA, PWMA, pwmA);
+  setMotorForward(MotFwdB, MotRevB, PWMB, pwmB);
+}
+
+void move_forward() {
+   unsigned long now = millis();
+
+  if (now - lastPIDTime >= pidInterval) {
+    lastPIDTime = now;
+
+    // Calculate speed from encoders
+    int deltaA = encoderValueA;
+    int deltaB = encoderValueB;
+
+    encoderValueA = 0;
+    encoderValueB = 0;
+
+    motorSpeedA = deltaA;
+    motorSpeedB = deltaB;
+
+    // Calculate errors
+    float errorA = targetSpeed - motorSpeedA;
+    float errorB = targetSpeed - motorSpeedB;
+
+    // PID עבור מנוע A
+errorSumA += errorA;
+errorSumA = constrain(errorSumA, -1000, 1000); // מניעת wind-up
+
+float dErrorA = errorA - lastErrorA;
+lastErrorA = errorA;
+
+float adjustA = (KpA * errorA) + (KiA * errorSumA) + (KdA * dErrorA);
+pwmA += (int)adjustA;
+pwmA = constrain(pwmA, 0, 255);
+
+// PID עבור מנוע B
+errorSumB += errorB;
+errorSumB = constrain(errorSumB, -1000, 1000); // מניעת wind-up
+
+float dErrorB = errorB - lastErrorB;
+lastErrorB = errorB;
+
+float adjustB = (KpB * errorB) + (KiB * errorSumB) + (KdB * dErrorB);
+pwmB += (int)adjustB * balanceFactor;  // שימוש במאזן (balanceFactor)
+pwmB = constrain(pwmB, 0, 255);
+
+
+    // Set motors
+    setMotorForward(MotFwdA, MotRevA, PWMA, pwmA);
+    setMotorForward(MotFwdB, MotRevB, PWMB, pwmB);
+  }
+}
 
 void stop_moving() {
   analogWrite(PWMA, 0);
   analogWrite(PWMB, 0);
 }
 
+
 void rotate_left(int duration) {
-  // digitalWrite(LEFT_LED_PIN, HIGH);
-  // digitalWrite(RIGHT_LED_PIN, HIGH);
+  // פסק זמן קריאת אינקודר
+  detachInterrupt(digitalPinToInterrupt(encoderPinA1));
+  detachInterrupt(digitalPinToInterrupt(encoderPinA2));
+  detachInterrupt(digitalPinToInterrupt(encoderPinB1));
+  detachInterrupt(digitalPinToInterrupt(encoderPinB2));
 
   unsigned long startTime = millis();
-  double turn_speed = (0.2 * FULLSPEED);
+  double turn_speed = (0.2 * FULLSPEED); // מהירות סיבוב
   while (millis() - startTime < duration) {
-    digitalWrite(AIN1, LOW);
-    digitalWrite(AIN2, HIGH);
+    // סיבוב שמאלה (מנוע A אחורה, מנוע B קדימה)
+    digitalWrite(MotFwdA, LOW);
+    digitalWrite(MotRevA, HIGH);
     analogWrite(PWMA, turn_speed);
 
-    digitalWrite(BIN1, HIGH);
-    digitalWrite(BIN2, LOW);
+    digitalWrite(MotFwdB, HIGH);
+    digitalWrite(MotRevB, LOW);
     analogWrite(PWMB, turn_speed);
   }
-  stop_moving();
-  // digitalWrite(LEFT_LED_PIN, LOW);
-  // digitalWrite(RIGHT_LED_PIN, LOW);
-}
+  
+  // סיים את הפנייה והחזיר את קריאות האינקודר
+  attachInterrupt(digitalPinToInterrupt(encoderPinA1), updateEncoderA, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(encoderPinA2), updateEncoderA, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(encoderPinB1), updateEncoderB, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(encoderPinB2), updateEncoderB, CHANGE);
 
+  stop_moving();
+}
 
 void rotate_right(int duration) {
-  // digitalWrite(LEFT_LED_PIN, HIGH);
-  // digitalWrite(RIGHT_LED_PIN, HIGH);
+  // פסק זמן קריאת אינקודר
+  detachInterrupt(digitalPinToInterrupt(encoderPinA1));
+  detachInterrupt(digitalPinToInterrupt(encoderPinA2));
+  detachInterrupt(digitalPinToInterrupt(encoderPinB1));
+  detachInterrupt(digitalPinToInterrupt(encoderPinB2));
+
   unsigned long startTime = millis();
-  double turn_speed = (0.2 * FULLSPEED);
+  double turn_speed = (0.2 * FULLSPEED); // מהירות סיבוב
   while (millis() - startTime < duration) {
-    digitalWrite(AIN1, HIGH);
-    digitalWrite(AIN2, LOW);
+    // סיבוב ימינה (מנוע A קדימה, מנוע B אחורה)
+    digitalWrite(MotFwdA, HIGH);
+    digitalWrite(MotRevA, LOW);
     analogWrite(PWMA, turn_speed);
 
-    digitalWrite(BIN1, LOW);
-    digitalWrite(BIN2, HIGH);
+    digitalWrite(MotFwdB, LOW);
+    digitalWrite(MotRevB, HIGH);
     analogWrite(PWMB, turn_speed);
   }
+
+  // סיים את הפנייה והחזיר את קריאות האינקודר
+  attachInterrupt(digitalPinToInterrupt(encoderPinA1), updateEncoderA, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(encoderPinA2), updateEncoderA, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(encoderPinB1), updateEncoderB, CHANGE);
+  attachInterrupt(digitalPinToInterrupt(encoderPinB2), updateEncoderB, CHANGE);
+
   stop_moving();
-  // digitalWrite(LEFT_LED_PIN, LOW);
-  // digitalWrite(RIGHT_LED_PIN, LOW);
-}
-
-// Function to gradually turn right by making the left motor move faster than the right motor
-void move_right() {
-  // Define the speed difference between the motors
-  const int leftMotorSpeed = FULLSPEED;          // Speed for the left motor
-  const int rightMotorSpeed = FULLSPEED * 0.35;  // Speed for the right motor, slower to create a right turn
-
-  // Continue turning right for the specified duration
-  // Move the left motor forward at full speed
-  digitalWrite(AIN1, HIGH);
-  digitalWrite(AIN2, LOW);
-  analogWrite(PWMA, leftMotorSpeed);
-
-  // Move the right motor forward at reduced speed
-  digitalWrite(BIN1, HIGH);
-  digitalWrite(BIN2, LOW);
-  analogWrite(PWMB, rightMotorSpeed);
-}
-
-void move_left() {
-  // Define the speed difference between the motors
-  const int leftMotorSpeed = FULLSPEED * 0.35;  // Speed for the left motor, slower to create a left turn
-  const int rightMotorSpeed = FULLSPEED;        // Speed for the right motor
-
-  // Move the left motor forward at reduced speed
-  digitalWrite(AIN1, HIGH);
-  digitalWrite(AIN2, LOW);
-  analogWrite(PWMA, leftMotorSpeed);
-
-  // Move the right motor forward at full speed
-  digitalWrite(BIN1, HIGH);
-  digitalWrite(BIN2, LOW);
-  analogWrite(PWMB, rightMotorSpeed);
 }
 
 
-void move_left(int duration) {
-  double turn_speed = (0.2 * FULLSPEED);
-  digitalWrite(LEFT_LED_PIN, HIGH);
-  move_forward();
-  delay(790);
-  unsigned long startTime = millis();
-  while (millis() - startTime < duration) {
-    digitalWrite(AIN1, LOW);
-    digitalWrite(AIN2, HIGH);
-    analogWrite(PWMA, turn_speed);
-
-    digitalWrite(BIN1, HIGH);
-    digitalWrite(BIN2, LOW);
-    analogWrite(PWMB, turn_speed);
-  }
-  move_forward();
-  delay(580);
-  stop_moving();
-  digitalWrite(LEFT_LED_PIN, LOW);
-}
-
+// Main turning functions
 void turnLeft() {
   digitalWrite(LEFT_LED_PIN, HIGH);
-  // Constants for determining when to stop turning
-  const int wallDetectionThreshold = 180;  // Distance to consider a sensor has detected a wall
-  const int frontClearThreshold = 250;     // Distance to consider the front is clear
-  const int closeToCornerThreshold = 100;  // Distance to consider the robot too close to the corner
-
-  double frontDistanceChange;
-
-  while (true) {
-    getMeasurments();
-    TransmitValues();
-    frontDistanceChange = distance_Forward - prev_distance_Forward;
-    bool leftWallDetected = (distance_Left < wallDetectionThreshold);
-    bool rightWallDetected = (distance_Right < wallDetectionThreshold);
-    bool frontClear = (distance_Forward > frontClearThreshold);
-
-    // Finished the turn
-    if (leftWallDetected && rightWallDetected) {
-      stop_moving();  // Stop the motors
-      break;          // Exit the function
-    }
-
-    // If the robot is too close to the right corner side, perform a left rotation
-    // if (distance_Forward < closeToCornerThreshold && frontDistanceChange < 0 && distance_Right < 70) {
-    //   stop_moving();
-    //   rotate_left(200);  // Perform a full left rotation
-    //   continue;
-    // }
-
-    // If the robot is too close to the left corner side, perform a right rotation
-    if (distance_Forward < closeToCornerThreshold && distance_Left < 70) {
-      stop_moving();
-      delay(300);
-      getMeasurments();
-      if (distance_Forward < closeToCornerThreshold)
-        rotate_right(200);  // Perform a full right rotation
-      continue;
-    }
-
-    // if(distance_Forward < 50 ){
-    //   move_backward(300);
-    // }
-
-    // if(distance_Right < 56){
-    //   move_backward(400);
-    //   break;
-    // }
-
-    move_left();
-    delay(10);
-  }
+  // Similar to rotate_left but handles conditions and sensors
+  rotate_left(450); // Rotate left for 1 second as an example
   digitalWrite(LEFT_LED_PIN, LOW);
 }
-
 
 void turnRight() {
   digitalWrite(RIGHT_LED_PIN, HIGH);
-  // Constants for determining when to stop turning
-  const int wallDetectionThreshold = 180;  // Distance to consider a sensor has detected a wall
-  const int frontClearThreshold = 250;     // Distance to consider the front is clear
-  const int closeToCornerThreshold = 110;  // Distance to consider the robot too close to the corner
-
-  double currentFrontDistance;
-  double frontDistanceChange;
-
-  while (true) {
-    getMeasurments();
-    TransmitValues();
-    frontDistanceChange = distance_Forward - prev_distance_Forward;
-    bool leftWallDetected = (distance_Left < wallDetectionThreshold);
-    bool rightWallDetected = (distance_Right < wallDetectionThreshold);
-    bool frontClear = (distance_Forward > frontClearThreshold);
-
-    // finished the turn
-    if (leftWallDetected && rightWallDetected) {
-      stop_moving();  // Stop the motors
-      break;          // Exit the function
-    }
-
-    // if(distance_Forward < 50 ){
-    //   move_backward(300);
-    // }
-
-    // if(distance_Right < 56){
-    //   move_backward(400);
-    //   break;
-    // }
-
-
-    // // If the robot is too close to the left corner side, perform a right rotation
-    // if (distance_Forward < closeToCornerThreshold && frontDistanceChange > 0) {
-    //   stop_moving();
-    //   // rotate_right(200);     // Perform a full right rotation
-    //   continue;
-    // }
-
-    if (distance_Forward < closeToCornerThreshold && distance_Right < 70) {
-      stop_moving();
-      delay(300);
-      getMeasurments();
-      if (distance_Forward < closeToCornerThreshold)
-        rotate_left(200);  // Perform a full left rotation
-      continue;
-    }
-
-    move_right();
-    delay(10);
-  }
+  // Similar to rotate_right but handles conditions and sensors
+  rotate_right(425); // Rotate right for 1 second as an example
   digitalWrite(RIGHT_LED_PIN, LOW);
 }
-
-// void move_right(int duration) {
-//   digitalWrite(RIGHT_LED_PIN,HIGH);
-//   // move_forward();
-//   // delay(600 );
-
-//   // double turn_speed = (0.2*FULLSPEED);
-//   digitalWrite(AIN1, HIGH);
-//   digitalWrite(AIN2, LOW);
-//   analogWrite(PWMA,FULLSPEED );
-
-//   digitalWrite(BIN1, HIGH);
-//   digitalWrite(BIN2, LOW);
-//   analogWrite(PWMB, FULLSPEED/4);
-
-//   // Wait for encoder to reach a value that represents a 90 degree turn
-//   encoderValueA = 0; // Reset encoder value for motor A
-//   encoderValueB = 0; // Reset encoder value for motor B
-//   long targetCount_A = 1050*2; // Start with an estimated value   #almost 90 degrees with speed of 200
-//   long targetCount_B = 1050/2; // Start with an estimated value   #almost 90 degrees with speed of 200
-//   while (abs(encoderValueA) <= targetCount_A or abs(encoderValueB) <= targetCount_B) {
-//     // Wait
-//   }
-//   move_forward();
-//   // delay(600 );
-//   // stop_moving();
-//   digitalWrite(RIGHT_LED_PIN,LOW);
-// }
-
-// void move_left(int duration) {
-//   double turn_speed = (0.2*FULLSPEED);
-//   digitalWrite(LEFT_LED_PIN,HIGH);
-//   // move_forward();
-//   // delay(600);
-
-//   digitalWrite(AIN1, HIGH);
-//   digitalWrite(AIN2, LOW);
-//   analogWrite(PWMA, FULLSPEED/4);
-
-//   digitalWrite(BIN1, HIGH);
-//   digitalWrite(BIN2, LOW);
-//   analogWrite(PWMB, FULLSPEED);
-//   // Wait for encoder to reach a value that represents a 90 degree turn
-//   encoderValueA = 0; // Reset encoder value for motor A
-//   encoderValueB = 0; // Reset encoder value for motor B
-//   long targetCount_A = 1100/2; // Start with an estimated value   #almost 90 degrees with speed of 200
-//   long targetCount_B = 1100*2; // Start with an estimated value   #almost 90 degrees with speed of 200
-//   while (abs(encoderValueA) <= targetCount_A or abs(encoderValueB) <= targetCount_B) {
-//     // Wait
-//   }
-//   // move_forward();
-//   // delay(600 );
-//   stop_moving();
-//   digitalWrite(LEFT_LED_PIN,LOW);
-// }
-
-void move_backward(int duration) {
-
-  unsigned long startTime = millis();
-  while (millis() - startTime < duration) {
-    digitalWrite(AIN1, LOW);
-    digitalWrite(AIN2, HIGH);
-    analogWrite(PWMA, FULLSPEED);
-
-    digitalWrite(BIN1, LOW);
-    digitalWrite(BIN2, HIGH);
-    analogWrite(PWMB, FULLSPEED);
-  }
-  stop_moving();
-}
-
-void motorsSetup() {
-  // Set control pins as outputs for Motor A
-  pinMode(STBY, OUTPUT);
-  pinMode(PWMA, OUTPUT);
-  pinMode(AIN1, OUTPUT);
-  pinMode(AIN2, OUTPUT);
-
-  // Set control pins as outputs for Motor B
-  pinMode(PWMB, OUTPUT);
-  pinMode(BIN1, OUTPUT);
-  pinMode(BIN2, OUTPUT);
-
-  // Ensure the motor driver is out of standby mode
-  digitalWrite(STBY, HIGH);
-}
-
-
-
-
-#endif  // MOTORS_H
