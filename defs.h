@@ -18,12 +18,12 @@ bool got_ip = false;
 #define LEFT_LED_PIN 18
 #define RIGHT_LED_PIN 5
 
-#define FULLSPEED 255
+#define FULLSPEED 100
 // Define pin connections for Motor -------- A
 #define STBY 27   // Standby pin
 #define PWMA 13   // control PWM   for Motor A speed
-#define AIN1 14   // Control pin 1 for Motor A direction - left motor
-#define AIN2 12   // Control pin 2 for Motor A direction
+#define AIN1 12   // Control pin 1 for Motor A direction - left motor
+#define AIN2 14   // Control pin 2 for Motor A direction
 
 // Define pin connections for Motor B
 #define PWMB 26   // Control PWM   for Motor B speed
@@ -50,7 +50,7 @@ int leftSensorBuff[BUFF_SIZE]  = {0};
 int rightSensorBuff[BUFF_SIZE] = {0};
 int FrontSensorBuff[BUFF_SIZE] = {0};
 
-int buffer_index = 0; 
+int buffer_index = 0;
 
 
 typedef enum direction {
