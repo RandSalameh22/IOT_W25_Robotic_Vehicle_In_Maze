@@ -47,6 +47,9 @@ float balanceFactor = 1.0;  // תוודא שהמאזן מתאים, תוכל לנ
 
 // Adjust PID for better balance and less drift
 
+
+
+
 // State tracking for PID
 float errorSumA = 0.0;
 float lastErrorA = 0.0;
@@ -297,8 +300,9 @@ void rotate_left(int duration) {
   
 }
 
-void rotate_right(int duration) {
 
+void rotate_right(int duration) {
+ 
   unsigned long startTime = millis();
   double turn_speed = (0.2 * FULLSPEED);
   while (millis() - startTime < duration) {
@@ -317,8 +321,8 @@ void rotate_right(int duration) {
 // Function to gradually turn right by making the left motor move faster than the right motor
 void move_right() {
   // Define the speed difference between the motors
-  const int leftMotorSpeed = 220;          // Speed for the left motor
-  const int rightMotorSpeed = FULLSPEED * 0.35;  // Speed for the right motor, slower to create a right turn
+  const int leftMotorSpeed = 200;          // Speed for the left motor
+  const int rightMotorSpeed = 80;  // Speed for the right motor, slower to create a right turn
 
   // Continue turning right for the specified duration
   // Move the left motor forward at full speed
@@ -360,6 +364,7 @@ void move_left() {
 
   }
 
+
 void move_left(int duration) {
   double turn_speed = (0.2 * FULLSPEED);
   move_forward_helper();
@@ -384,8 +389,10 @@ void turnLeft() {
   detachInterrupt(digitalPinToInterrupt(encoderPinA2));
   detachInterrupt(digitalPinToInterrupt(encoderPinB1));
   detachInterrupt(digitalPinToInterrupt(encoderPinB2));
+  
 
   // Constants for determining when to stop turning
+   // Constants for determining when to stop turning
   const int wallDetectionThreshold = 150;  // Distance to consider a sensor has detected a wall
   const int frontClearThreshold = 250;     // Distance to consider the front is clear
   const int closeToCornerThreshold = 100;  // Distance to consider the robot too close to the corner
@@ -407,6 +414,7 @@ void turnLeft() {
       break;          // Exit the function
     }
 
+   
     // If the robot is too close to the left corner side, perform a right rotation
     if (distance_Forward < closeToCornerThreshold && distance_Left < 70) {
       stop_moving();
@@ -420,12 +428,15 @@ void turnLeft() {
 
   move_left();
     delay(10);
+
+
     
   }
    attachInterrupt(digitalPinToInterrupt(encoderPinA1), updateEncoderA, CHANGE);
   attachInterrupt(digitalPinToInterrupt(encoderPinA2), updateEncoderA, CHANGE);
   attachInterrupt(digitalPinToInterrupt(encoderPinB1), updateEncoderB, CHANGE);
   attachInterrupt(digitalPinToInterrupt(encoderPinB2), updateEncoderB, CHANGE);
+
 }
 
 
@@ -458,7 +469,7 @@ void turnRight() {
       break;          // Exit the function
     }
 
-    
+    /*
     if (distance_Forward < closeToCornerThreshold && distance_Right < 70) {
       stop_moving();
       delay(300);
@@ -466,7 +477,7 @@ void turnRight() {
       if (distance_Forward < closeToCornerThreshold)
         rotate_left(210);  // Perform a full left rotation
       continue;
-    }
+    }*/
 
     move_right();
     delay(10);
