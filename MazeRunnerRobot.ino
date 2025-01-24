@@ -39,6 +39,10 @@ struct Pair {
   int second;
 };
 
+struct Start{
+  int x;
+  int y;
+};
 // Struct to hold instructions
 struct Instruction {
   String direction;
@@ -50,6 +54,7 @@ bool visitedCells[ROWS][COLS];
 Pair path[MAX_PATH_LENGTH];
 int pathSize = 0;
 
+Start StartLocAfterTurn[MAX_PATH_LENGTH];
 Instruction instructionsList[MAX_PATH_LENGTH];
 int instructionsSize = 0;
 
@@ -107,47 +112,6 @@ bool dfs(int row, int col) {
   visitedCells[row][col] = false;
   return false;
 }
-
-// Function to count right and left turns based on movement
-// Pair countRightLeft(Pair old_element, Pair new_element) {
-//   Pair result = {0, 0};
-
-//   // Determine movement direction
-//   if (new_element.second == old_element.second + 1) { // Right
-//     if (new_element.first != 0 && (maze[new_element.first - 1][new_element.second] == "F" || maze[new_element.first - 1][new_element.second] == "G")) {
-//       result.second++; // Left
-//     }
-//     if (new_element.first != 3 && (maze[new_element.first + 1][new_element.second] == "F" || maze[new_element.first + 1][new_element.second] == "G")) {
-//       result.first++; // Right
-//     }
-//   }
-//   else if (new_element.second == old_element.second - 1) { // Left
-//     if (new_element.first != 0 && (maze[new_element.first - 1][new_element.second] == "F" || maze[new_element.first - 1][new_element.second] == "G")) {
-//       result.first++; // Right
-//     }
-//     if (new_element.first != 3 && (maze[new_element.first + 1][new_element.second] == "F" || maze[new_element.first + 1][new_element.second] == "G")) {
-//       result.second++; // Left
-//     }
-//   }
-//   else if (new_element.first == old_element.first + 1) { // Down
-//     if (new_element.second != 0 && (maze[new_element.first][new_element.second - 1] == "F" || maze[new_element.first][new_element.second - 1] == "G")) {
-//       result.second++; // Left
-//     }
-//     if (new_element.second != 3 && (maze[new_element.first][new_element.second + 1] == "F" || maze[new_element.first][new_element.second + 1] == "G")) {
-//       result.first++; // Right
-//     }
-//   }
-//   else if (new_element.first == old_element.first - 1) { // Up
-//     if (new_element.second != 0 && (maze[new_element.first][new_element.second - 1] == "F" || maze[new_element.first][new_element.second - 1] == "G")) {
-//       result.first++; // Right
-//     }
-//     if (new_element.second != 3 && (maze[new_element.first][new_element.second + 1] == "F" || maze[new_element.first][new_element.second + 1] == "G")) {
-//       result.second++; // Left
-//     }
-//   }
-
-//   return result;
-// }
 
 Pair countRightLeft(Pair old_element, Pair new_element) {
   int left = 0, right = 0;
@@ -221,6 +185,9 @@ void fillPathInstructions() {
         left = up = right = 0;
         instructionsList[instructionsSize].direction = (right_count > left_count) ? "right" : "left";
         instructionsList[instructionsSize].count = (right_count > left_count) ? right_count : left_count;
+        StartLocAfterTurn[instructionsSize].x= current.first;
+        StartLocAfterTurn[instructionsSize].y= current.second;
+
         instructionsSize++;
         right_count = left_count = 0;
       }
@@ -230,6 +197,9 @@ void fillPathInstructions() {
         left = right = down = 0;
         instructionsList[instructionsSize].direction = (right_count > left_count) ? "right" : "left";
         instructionsList[instructionsSize].count = (right_count > left_count) ? right_count : left_count;
+                StartLocAfterTurn[instructionsSize].x= current.first;
+        StartLocAfterTurn[instructionsSize].y= current.second;
+
         instructionsSize++;
         right_count = left_count = 0;
       }
@@ -239,6 +209,9 @@ void fillPathInstructions() {
         left = up = down = 0;
         instructionsList[instructionsSize].direction = (right_count > left_count) ? "right" : "left";
         instructionsList[instructionsSize].count = (right_count > left_count) ? right_count : left_count;
+                StartLocAfterTurn[instructionsSize].x= current.first;
+        StartLocAfterTurn[instructionsSize].y= current.second;
+
         instructionsSize++;
         right_count = left_count = 0;
       }
@@ -248,6 +221,9 @@ void fillPathInstructions() {
         right = up = down = 0;
         instructionsList[instructionsSize].direction = (right_count > left_count) ? "right" : "left";
         instructionsList[instructionsSize].count = (right_count > left_count) ? right_count : left_count;
+                StartLocAfterTurn[instructionsSize].x= current.first;
+        StartLocAfterTurn[instructionsSize].y= current.second;
+
         instructionsSize++;
         right_count = left_count = 0;
       }
@@ -372,6 +348,12 @@ void setup() {
       Serial.print(instructionsList[i].direction);
       Serial.print(", ");
       Serial.println(instructionsList[i].count);
+     Serial.print("<<<<<<<<< ");
+      Serial.print(StartLocAfterTurn[i].x);
+      Serial.print(" middle : ");
+      Serial.println(StartLocAfterTurn[i].y);
+
+
     }
 
     // Optionally, execute the instructions to move the robot
@@ -453,63 +435,3 @@ void loop() {
 
   delay(30);
 } 
-
-  // Main loop can remain empty or handle other tasks
-  // delay(1000);
-// #include <Wire.h>
-// #include <Adafruit_VL53L0X.h>
-// #include <Arduino.h>
-// #include <vector>
-// #include <utility>  // For std::pair
-// #include <WiFi.h>
-// #include "defs.h"
-// #include "sensors.h"
-// #include "adjust.h"
-// #include "motors.h"
-// #include "comm.h"
-// #define WALL_DETECTION_THRESHOLD 120 // Adjust the value based on your sensor's range (in mm)
-
-// void setup() {
-//   Serial.begin(115200);
-//   while (!Serial) ;  // Wait for serial port to initialize
-//   pinMode(LEFT_LED_PIN, OUTPUT);
-//   pinMode(RIGHT_LED_PIN, OUTPUT);
-
-//   commSetup();
-//   move_pid();
-//   commReadData();
-
-//   setupSensors();  // Setup the sensors (defined in sensors.h)
-// // motorsSetup();  // Uncomment if you have a motors setup function
-// }
-
-// void loop() {
-//   // Get measurements from the sensors (right, forward, left sensors)
-//   getMeasurments();  // This will update the distances for Right, Forward, and Left
-
-//   // Print out sensor readings for debugging
-//   Serial.print("Left Distance: ");
-//   Serial.print(distance_Left);
-//   Serial.print(" mm, Right Distance: ");
-//   Serial.print(distance_Right);
-//   Serial.print(" mm, Forward Distance: ");
-//   Serial.println(distance_Forward);
-
-//   // Check if any wall is detected on either side
-//   if (distance_Forward < WALL_DETECTION_THRESHOLD) {
-//     // Decide whether to turn left or right based on which side has more space
-//     if (distance_Left < distance_Right) {
-//       Serial.println("Wall detected on the left, turning right...");
-//       turnRight();  // Replace with your actual motor control code for turning right
-//     } else {
-//       Serial.println("Wall detected on the right, turning left...");
-//       turnLeft();  // Replace with your actual motor control code for turning left
-//     }
-//   } else {
-//     // If no wall is detected, continue moving forward
-//     move_forward();  // Replace with your actual motor control code for moving forward
-//   }
-
-//   // Optionally, transmit sensor values for external monitoring (e.g., via Serial Monitor)
-//  // TransmitValues();  // This will print wall status and sensor distances, as defined in sensors.h
-// }
