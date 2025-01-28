@@ -1,9 +1,7 @@
 import MazeEnv
 from AlgorithmAgents import *
-import time
 from IPython.display import clear_output
 import defs
-import TranslateToRobotActions
 import tkinter as tk
 import MazeBuilder
 import gspread
@@ -29,10 +27,8 @@ def transmitMaze(maze):
     creds = ServiceAccountCredentials.from_json_keyfile_name("JSONkey.json", scope)
     client = gspread.authorize(creds)
     sheet = client.open("Transmit").sheet1  # Open the first sheet
-
     # Clear the existing data in the sheet
     sheet.clear()
-
     # Write the maze structure row by row
     for row in maze:
         sheet.append_row(row)
@@ -50,7 +46,6 @@ def buildMaze(size, print_maze=0):
         env.reset()
         print(env.render())
         clear_output(wait=True)
-
     # Return the built maze
     return defs.boards['Map']
 
