@@ -22,7 +22,7 @@ bool got_ip = false;
 #define LEFT_LED_PIN 18
 #define RIGHT_LED_PIN 5
 
-#define FULLSPEED 220
+#define FULLSPEED 210
 // Define pin connections for Motor -------- A
 #define STBY 27   // Standby pin
 #define PWMA 13   // control PWM   for Motor A speed
