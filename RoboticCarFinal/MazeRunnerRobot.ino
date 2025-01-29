@@ -6,7 +6,6 @@
 #include <WiFi.h>
 #include "defs.h"
 #include "sensors.h"
-#include "adjust.h"
 #include "motors.h"
 #include "comm.h"
 
