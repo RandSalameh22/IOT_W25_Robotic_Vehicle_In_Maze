@@ -1,0 +1,86 @@
+#define ENCODER_PIN_A 34 // Pin connected to encoder signal A
+#define ENCODER_PIN_B 35 // Pin connected to encoder signal B
+#define MOTOR_AIN1 25    // Motor driver input pin 1
+#define MOTOR_AIN2 26    // Motor driver input pin 2
+#define MOTOR_PWM 27     // Motor PWM pin
+#define PWM_CHANNEL 0
+#define PWM_FREQ 5000
+#define PWM_RESOLUTION 8
+
+volatile int encoderCount = 0;
+int targetRevolutions = 10;  // Target revolutions = 10
+float gearRatio = 50.0;      // Adjust to your motor's gear ratio
+float countsPerRevolution = 14.0 * gearRatio;
+
+void IRAM_ATTR encoderISR() {
+  encoderCount++;
+}
+
+void setup() {
+  Serial.begin(115200);
+
+  pinMode(ENCODER_PIN_A, INPUT_PULLUP);
+  pinMode(ENCODER_PIN_B, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(ENCODER_PIN_A), encoderISR, RISING);
+
+  pinMode(MOTOR_AIN1, OUTPUT);
+  pinMode(MOTOR_AIN2, OUTPUT);
+  pinMode(MOTOR_PWM, OUTPUT);
+  ledcSetup(PWM_CHANNEL, PWM_FREQ, PWM_RESOLUTION);
+  ledcAttachPin(MOTOR_PWM, PWM_CHANNEL);
+
+  Serial.println("Setup complete. Starting test...");
+}
+
+void moveMotor(bool direction, int speed) {
+  digitalWrite(MOTOR_AIN1, direction ? HIGH : LOW);
+  digitalWrite(MOTOR_AIN2, direction ? LOW : HIGH);
+  ledcWrite(PWM_CHANNEL, speed);
+}
+
+void stopMotor() {
+  digitalWrite(MOTOR_AIN1, LOW);
+  digitalWrite(MOTOR_AIN2, LOW);
+  ledcWrite(PWM_CHANNEL, 0);
+}
+
+void testMotor() {
+  encoderCount = 0;
+
+  Serial.println("Testing motor at multiple speeds...");
+  
+  // Move motor for 10 revolutions
+  moveMotor(true, 150);  // Speed can be adjusted
+  int revolutionsGoal = targetRevolutions * countsPerRevolution;  // Total counts for 10 revolutions
+  while (encoderCount < revolutionsGoal) {
+    // Wait until we reach 10 revolutions
+  }
+
+  // Stop the motor after 10 revolutions
+  stopMotor();
+
+  // Calculate actual revolutions and error
+  int actualRevolutions = encoderCount / countsPerRevolution;
+  float error = ((float)actualRevolutions - targetRevolutions) / targetRevolutions * 100.0;
+
+  // Print results
+  Serial.print("Target revolutions: ");
+  Serial.print(targetRevolutions);
+  Serial.print(", Actual revolutions: ");
+  Serial.print(actualRevolutions);
+  Serial.print(", Error: ");
+  Serial.print(error, 2);
+  Serial.println("%");
+
+  // Check if error is greater than 2%
+  if (abs(error) > 2.0) {
+    Serial.println("Error exceeds acceptable range (2%)");
+  } else {
+    Serial.println("Test successful, error within acceptable range.");
+  }
+}
+
+void loop() {
+  testMotor();
+  while (true); // End program
+}
