@@ -1,24 +1,54 @@
-#include "VL53L1X.h"
+#include <Wire.h>
+#include <VL53L0X.h>
 
-VL53L1X sensor;
+VL53L0X sensor;
 
-void sensor_init(VL53L1X::DistanceMode range_mode, bool high_speed) {
+void sensor_init(bool high_speed) {
   Wire.begin();
-  sensor.setTimeout(500);
-  sensor.init();
-  sensor.setDistanceMode(range_mode);  
-  int budget = high_speed ? 33000 : 140000;
-  sensor.setMeasurementTimingBudget(budget);
+
+  // Initialize the sensor
+  if (!sensor.init()) {
+    Serial.println("Failed to detect and initialize sensor!");
+    while (1);  // Halt if initialization fails
+  }
+
+  // Optional: Set the signal rate limit (higher values mean more sensitivity but less accuracy)
+  sensor.setSignalRateLimit(0.25);
+
+  // Set measurement timing budget
+  if (high_speed) {
+    sensor.setMeasurementTimingBudget(20000);  // Short timing for high-speed mode
+  } else {
+    sensor.setMeasurementTimingBudget(200000);  // Default longer timing for better accuracy
+  }
+
+  // Optional: Set VCSEL (vertical cavity surface-emitting laser) pulse period
+  sensor.setVcselPulsePeriod(VL53L0X::VcselPeriodPreRange, 18);  // Short range
+  sensor.setVcselPulsePeriod(VL53L0X::VcselPeriodFinalRange, 14);  // Medium range
 }
 
 void setup() {
   Serial.begin(115200);
-  // range_mode: VL53L1X::Short, VL53L1X::Medium, or VL53L1X::Long
-  sensor_init(VL53L1X::Medium, false);   
+  while (!Serial) {
+    delay(10);  // Wait for serial to be ready (only required for some boards)
+  }
+
+  // Initialize the sensor
+  sensor_init(false);  // Set to true for high-speed mode
 }
 
 void loop() {
+  // Read distance in millimeters
   int dist = sensor.readRangeSingleMillimeters();
-  Serial.println(dist);
-  delay(1000);
+
+  // Check if there was an error
+  if (sensor.timeoutOccurred()) {
+    Serial.println("Sensor timeout!");
+  } else {
+    Serial.print("Distance: ");
+    Serial.print(dist);
+    Serial.println(" mm");
+  }
+
+  delay(1000);  // Delay 1 second between readings
 }
