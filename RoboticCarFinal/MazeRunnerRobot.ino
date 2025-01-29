@@ -10,6 +10,10 @@
 #include "motors.h"
 #include "comm.h"
 
+
+#include <queue>
+#include <cmath> // For abs()
+
 // Directions enumeration
 enum Direction { UP, DOWN, LEFT, RIGHT };
 
@@ -48,6 +52,8 @@ struct Instruction {
   String direction;
   int count;
 };
+/////////////////////////////////////////////////////////////////////////////////////////////////////////////
+///////////////////////
 
 // Global arrays for visited cells, path, and instructions
 bool visitedCells[ROWS][COLS];
@@ -79,7 +85,7 @@ bool isValid(int row, int col) {
 // Global variables
 int shortestPathLength = MAX_PATH_LENGTH;  // Initialize with maximum path length
 Pair finalPath[MAX_PATH_LENGTH];  // To store the shortest path at the end
-
+/*
 // DFS Helper function
 bool dfsHelper(int row, int col, int pathLength) {
   if (maze[row][col] == "G") { // Goal reached
@@ -143,6 +149,130 @@ bool dfs(int row, int col) {
     }
 
 }
+*/
+// Struct for each node in the A* algorithm
+struct Node {
+  int row, col;         // Current cell coordinates
+  int costSoFar;        // Cost to reach this cell from the start
+  int estimatedCost;    // Total estimated cost (costSoFar + heuristic)
+  int parentRow, parentCol; // Parent cell for path reconstruction
+
+  // Custom comparator for the priority queue (min-heap)
+  bool operator<(const Node &other) const {
+    return estimatedCost > other.estimatedCost; // Lowest cost has highest priority
+  }
+};
+
+struct Parent {
+    int row;
+    int col;
+};
+
+bool AStar(int startRow, int startCol) {
+    std::priority_queue<Node> pq; // Min-heap based on estimatedCost
+    bool visited[ROWS][COLS] = {false}; // To track visited cells
+    Parent parent[ROWS][COLS]; // To store parent nodes for path reconstruction
+
+    // Initialize parent array
+    for (int i = 0; i < ROWS; i++) {
+        for (int j = 0; j < COLS; j++) {
+            parent[i][j] = {-1, -1};
+        }
+    }
+
+    // Heuristic function to calculate Manhattan distance
+    auto heuristic = [](int row, int col, int goalRow, int goalCol) -> int {
+        return abs(row - goalRow) + abs(col - goalCol); // Manhattan distance
+    };
+
+    // Locate the goal ('G')
+    int goalRow = -1, goalCol = -1;
+    for (int i = 0; i < ROWS; i++) {
+        for (int j = 0; j < COLS; j++) {
+            if (maze[i][j] == "G") {
+                goalRow = i;
+                goalCol = j;
+                break;
+            }
+        }
+    }
+    if (goalRow == -1 || goalCol == -1) {
+        Serial.println("Goal 'G' not found in the maze!");
+        return false; // Goal not found
+    }
+
+    // Initialize the start node
+    Node startNode = {startRow, startCol, 0, heuristic(startRow, startCol, goalRow, goalCol), -1, -1};
+    pq.push(startNode);
+
+    while (!pq.empty()) {
+        Node current = pq.top();
+        pq.pop();
+
+        int row = current.row;
+        int col = current.col;
+
+        // Check if the goal is reached
+        if (row == goalRow && col == goalCol) {
+            // Reconstruct the path by tracing parents
+            int pathIndex = 0;
+            while (row != -1 && col != -1) {
+                path[pathIndex].first = row;
+                path[pathIndex].second = col;
+                Parent p = parent[row][col];
+                row = p.row;
+                col = p.col;
+                pathIndex++;
+            }
+            pathSize = pathIndex;
+
+            // Reverse the path to get it from start to goal
+            for (int i = 0; i < pathSize / 2; i++) {
+                std::swap(path[i], path[pathSize - i - 1]);
+            }
+
+            Serial.println("Path to the goal found:");
+            for (int i = 0; i < pathSize; i++) {
+                Serial.print(path[i].first);
+                Serial.print(", ");
+                Serial.println(path[i].second);
+            }
+
+            return true; // Path successfully found
+        }
+
+        // Skip if the cell is already visited
+        if (visited[row][col]) continue;
+        visited[row][col] = true;
+
+        // Explore neighbors in all four directions
+        for (int i = 0; i < 4; i++) {
+            int newRow = row + dx[i];
+            int newCol = col + dy[i];
+
+            if (isValid(newRow, newCol) && !visited[newRow][newCol]) {
+                int newCost = current.costSoFar + 1; // Cost of 1 to move to a neighbor
+                int estimatedCost = newCost + heuristic(newRow, newCol, goalRow, goalCol);  // Corrected call
+
+                // Add the neighbor to the priority queue
+                Node neighbor = {newRow, newCol, newCost, estimatedCost, row, col};
+                pq.push(neighbor);
+
+                // Update parent for path reconstruction
+                parent[newRow][newCol] = {row, col};
+            }
+        }
+    }
+
+    Serial.println("No path to the goal found.");
+    return false; // No path to the goal found
+}
+
+// Call this function to find the shortest path using A*
+bool dfs(int startRow, int startCol) {
+  return AStar(startRow, startCol);
+}
+
 
 
 Pair countRightLeft(Pair old_element, Pair new_element) {
@@ -173,7 +303,7 @@ Pair countRightLeft(Pair old_element, Pair new_element) {
     }
     return {right, left};
   }
-//hereeeeeeeeeeeeeeeeeeeeeeeeeeeee
+//                                                                                                      
   // Went down
   if (new_element.first == old_element.first - 1) {
     if (new_element.second != 0 && 
@@ -502,6 +632,7 @@ void loop() {
   updateState();
   countJunctions();
 
+
     // TO DO : The situation where the robot is detect 3 walls and the still instructions remaining ----> Dynamic Maze Detect
    if (distance_Left <= 200 && distance_Right <= 200 && distance_Forward <= 180) {
       delay(500);  // להמתין כדי לוודא שהחיישנים התייצבו
@@ -518,6 +649,10 @@ void loop() {
          
         if (vec_index < instructionsSize)
          {
+
+
+           rotate_180();
+
           int xNewStart;
            int yNewStart;
          if(vec_index)
@@ -526,18 +661,37 @@ void loop() {
              yNewStart = StartLocAfterTurn[vec_index-1].y;
 
          }
-         else
+         else if(right_turns_counter==0 && left_turns_counter == 0)
          {
-           xNewStart = StartLocAfterTurn[vec_index].x;
-             yNewStart = StartLocAfterTurn[vec_index].y;
+          Serial.println("No path to the goal found ");
+            delay(10);
+            stop_moving();
+            for (int i = 1; i < 6; i++) {
+         
+               rotate_right(100);
+          
+               rotate_left(100);
+            }
+
+         }
+         else {
+           xNewStart = startX;
+             yNewStart = startY;
+             getMeasurments();
+              while(distance_Forward>200)
+           {
+             move_forward();
+             getMeasurments();
+
+      
+           }
+            rotate_180();
+
+
          }
          
             
-             Serial.print("xNewStart ");
-              Serial.print(xNewStart);
-              Serial.print(" yNewStart ");
-              Serial.print(yNewStart);
-
+            
 
 
             maze[xNewStart][yNewStart] = "S";
@@ -548,15 +702,15 @@ void loop() {
             resetForNewDFS();
             pathSize=0;
             if (!dfs(startX, startY)) {
-            Serial.println("No path to the goal found....................");
+            Serial.println("No path to the goal found ");
             delay(10);
             stop_moving();
             for (int i = 1; i < 6; i++) {
          
-          rotate_right(100);
+               rotate_right(100);
           
-          rotate_left(100);
-        }
+               rotate_left(100);
+              }
             return;
           }
             fillPathInstructions();
@@ -603,6 +757,7 @@ void loop() {
 
   move_forward();
 
+
   if (vec_index == instructionsSize) {
      getMeasurments();
     while(distance_Forward>100)
@@ -613,10 +768,14 @@ void loop() {
       
     }
     for (int i = 1; i < 6; i++) {
-         
+         move_backward(200);
           rotate_right(100);
-          
           rotate_left(100);
+
+          move_forwardTime(150);
+           rotate_right(100);
+          rotate_left(100);
+          
         }
     
     
